@@ -1,28 +1,75 @@
+mikrotik_parser
 <template>
-	<input
-		type="text"
-		@change="this.filter($event)"
+	<div style="display: flex">
+		<span v-text="'Search'"/>
+		<input
+			type="radio"
+			id="byDomain"
+			value="byDomain"
+			v-model="this.pickedSearchType"
+			checked
+		/>
+		<label
+			for="byDomain"
+			v-text="'by domain'"
+		/>
+		<input
+			type="radio"
+			id="bySrcAddress"
+			value="bySrcAddress"
+			v-model="this.pickedSearchType"
+		/>
+		<label
+			for="bySrcAddress"
+			v-text="'by src address'"
+		/>
+	</div>
+	<span
+		style="display: flex"
 	>
+		<span
+			v-if="this.pickedSearchType === 'byDomain'"
+			v-text="'DNS filter:'"
+		/>
+		<span
+			v-else-if="this.pickedSearchType === 'bySrcAddress'"
+			v-text="'Src address filter:'"
+		/>
+		<input
+			type="text"
+			v-model="this.filterStr"
+			ref="input"
+		>
+		<button @click="filter">Search</button>
+	</span>
 	<div
-		class="src"
-		v-for="element in elements"
+		v-for="domain in domains"
+		:key="domain.dstDns"
+		style="margin-bottom: 40px"
 	>
-		<p
-			v-text="element.dstIP"
+		<div
+			v-text="domain.dstDns"
 		/>
-		<p
-			v-text="element.dstDNS"
-		/>
+		<span
+			v-for="element in domain.dnsConnections"
+			:key="element.dstDNS"
+		>
+			<span
+				v-text="element.dstIP"
+			/>
+			<span
+				v-text="', '"
+			/>
+		</span>
 		<span style="display: flex">
 			<span
 				v-text="'ignore vpn:'"
 			/>
 			<input
 				type="checkbox"
-				:id="element.id"
-				v-model="element.isIgnoreVpn"
-				@input="this.onCheckbox(element)"
-				style="margin-bottom: 40px"
+				:id="domain.id"
+				v-model="domain.isIgnoreVpn"
+				@input="this.onCheckbox(domain)"
 			>
 		</span>
 	</div>
@@ -34,37 +81,66 @@ import axios from 'axios'
 
 export default {
 
-	components: {},
+	data: () => ({
+		domains: [],
+		filterStr: '',
+		pickedSearchType: '',
+	}),
 
 	methods: {
-		filter(event) {
-			axios
-				.get(`http://localhost:8080/api/v1/dns?find=${event.target.value}`)
-				.then(response => {
-					this.elements = response.data
+		filter() {
+			let filter = this.filterStr
+			this.updateQueryParam('filter', filter)
+			switch(this.pickedSearchType) {
+				case 'byDomain': {
+					axios.get(`/api/v1/dns?find=${filter}`)
+						.then(response => {
+							this.domains = response.data
+						})
+						.catch(e => {
+							console.log(e)
+						})
+					break
+				}
+				case 'bySrcAddress': {
+					axios.get(`/api/v1/src?srcIp=${filter}`)
+						.then(response => {
+							this.domains = response.data
+						})
+						.catch(e => {
+							console.log(e)
+						})
+					break
+				}
+			}
+
+		},
+		onCheckbox(element) {
+			axios.post(`/api/v1/dns?dns=${element.dstDns}&enabled=${!element.isIgnoreVpn}`)
+				.then(answer => {
 				})
 				.catch(e => {
 					console.log(e)
 				})
 		},
-
-		onCheckbox(element) {
-			axios
-				.post(`http://localhost:8080/api/v1/dns?add=${element.dstDNS}&enabled=${!element.isIgnoreVpn}`)
-				.then(answer => {
-
-				})
-				.catch(e => {
-					console.log(e)
-				})
-		}
-
+		updateQueryParam(key, value) {
+			const url = new URL(window.location);
+			if (value === null || value === undefined) {
+				url.searchParams.delete(key);
+			} else {
+				url.searchParams.set(key, value);
+			}
+			window.history.replaceState({}, '', url); // адрес обновится, страница НЕ перезагрузится
+		},
 	},
 
-	data: () => ({
-		elements: []
-
-	})
+	mounted() {
+		const params = new URLSearchParams(window.location.search)
+		this.filterStr = params.get('filter')
+		if (this.filterStr) {
+			this.filter()
+		}
+	}
 }
 </script>
 
